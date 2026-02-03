@@ -437,6 +437,7 @@ function generateSandboxProfile({
     '  (sysctl-name "kern.argmax")',
     '  (sysctl-name "kern.bootargs")',
     '  (sysctl-name "kern.hostname")',
+    '  (sysctl-name "kern.nisdomainname")',
     '  (sysctl-name "kern.maxfiles")',
     '  (sysctl-name "kern.maxfilesperproc")',
     '  (sysctl-name "kern.maxproc")',
