@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'bun:test'
-import { spawnSync } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import { getPlatform } from '../../src/utils/platform.js'
+import { whichSync } from '../../src/utils/which.js'
 import {
   generateSeccompFilter,
   cleanupSeccompFilter,
@@ -33,10 +33,8 @@ describe('Linux Sandbox Dependencies', () => {
 
     // If no errors, bwrap and socat should be available
     if (depCheck.errors.length === 0) {
-      const bwrapResult = spawnSync('which', ['bwrap'], { stdio: 'ignore' })
-      const socatResult = spawnSync('which', ['socat'], { stdio: 'ignore' })
-      expect(bwrapResult.status).toBe(0)
-      expect(socatResult.status).toBe(0)
+      expect(whichSync('bwrap')).not.toBeNull()
+      expect(whichSync('socat')).not.toBeNull()
     }
   })
 })
@@ -82,15 +80,11 @@ describe('Pre-generated BPF Support', () => {
     const depCheck = checkLinuxDependencies()
 
     // On x64/arm64 with pre-built binaries, we should have no errors
-    const bwrapResult = spawnSync('which', ['bwrap'], { stdio: 'ignore' })
-    const socatResult = spawnSync('which', ['socat'], { stdio: 'ignore' })
+    const hasBwrap = whichSync('bwrap') !== null
+    const hasSocat = whichSync('socat') !== null
     const hasApplySeccomp = getApplySeccompBinaryPath() !== null
 
-    if (
-      bwrapResult.status === 0 &&
-      socatResult.status === 0 &&
-      hasApplySeccomp
-    ) {
+    if (hasBwrap && hasSocat && hasApplySeccomp) {
       // Basic deps available - on x64/arm64 this should be sufficient
       // (pre-built apply-seccomp binaries and BPF filters are included)
       const arch = process.arch
@@ -121,10 +115,10 @@ describe('Pre-generated BPF Support', () => {
     expect(depCheck.warnings.length).toBeGreaterThan(0)
 
     // But bwrap+socat should still be available (no errors) if installed
-    const bwrapResult = spawnSync('which', ['bwrap'], { stdio: 'ignore' })
-    const socatResult = spawnSync('which', ['socat'], { stdio: 'ignore' })
+    const hasBwrap = whichSync('bwrap') !== null
+    const hasSocat = whichSync('socat') !== null
 
-    if (bwrapResult.status === 0 && socatResult.status === 0) {
+    if (hasBwrap && hasSocat) {
       expect(depCheck.errors).toHaveLength(0)
     }
   })

@@ -2,10 +2,10 @@ import { createHttpProxyServer } from './http-proxy.js'
 import { createSocksProxyServer } from './socks-proxy.js'
 import type { SocksProxyWrapper } from './socks-proxy.js'
 import { logForDebugging } from '../utils/debug.js'
+import { whichSync } from '../utils/which.js'
 import { cloneDeep } from 'lodash-es'
 import { getPlatform, getWslVersion } from '../utils/platform.js'
 import * as fs from 'fs'
-import { spawnSync } from 'child_process'
 import type { SandboxRuntimeConfig } from './sandbox-config.js'
 import type {
   SandboxAskCallback,
@@ -341,11 +341,7 @@ function checkDependencies(ripgrepConfig?: {
 
   // Check ripgrep - use provided config, then initialized config, then default 'rg'
   const rgToCheck = ripgrepConfig ?? config?.ripgrep ?? { command: 'rg' }
-  const rgResult = spawnSync('which', [rgToCheck.command], {
-    stdio: 'ignore',
-    timeout: 1000,
-  })
-  if (rgResult.status !== 0) {
+  if (whichSync(rgToCheck.command) === null) {
     errors.push(`ripgrep (${rgToCheck.command}) not found`)
   }
 

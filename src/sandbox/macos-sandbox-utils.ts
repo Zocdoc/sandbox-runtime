@@ -1,7 +1,8 @@
 import shellquote from 'shell-quote'
-import { spawn, spawnSync } from 'child_process'
+import { spawn } from 'child_process'
 import * as path from 'path'
 import { logForDebugging } from '../utils/debug.js'
+import { whichSync } from '../utils/which.js'
 import {
   normalizePathForSandbox,
   generateProxyEnvVars,
@@ -654,11 +655,10 @@ export function wrapCommandWithSandboxMacOS(
   // Use the user's shell (zsh, bash, etc.) to ensure aliases/snapshots work
   // Resolve the full path to the shell binary
   const shellName = binShell || 'bash'
-  const shellPathResult = spawnSync('which', [shellName], { encoding: 'utf8' })
-  if (shellPathResult.status !== 0) {
+  const shell = whichSync(shellName)
+  if (!shell) {
     throw new Error(`Shell '${shellName}' not found in PATH`)
   }
-  const shell = shellPathResult.stdout.trim()
 
   // Use `env` command to set environment variables - each VAR=value is a separate
   // argument that shellquote handles properly, avoiding shell quoting issues

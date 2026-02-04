@@ -1,5 +1,4 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
-import * as childProcess from 'node:child_process'
+import { describe, test, expect, beforeEach, afterAll, mock } from 'bun:test'
 
 // Mock state - these control what the mocked functions return
 let mockBwrapInstalled = true
@@ -7,22 +6,20 @@ let mockSocatInstalled = true
 let mockBpfPath: string | null = null
 let mockApplyPath: string | null = null
 
-// Mock spawnSync to control bwrap/socat detection
-// The real code does: spawnSync('which', ['bwrap']) and checks status === 0
-// We spread the real module to preserve other exports (execFile, spawn, etc.)
-void mock.module('node:child_process', () => ({
-  ...childProcess,
-  spawnSync: (cmd: string, args: string[]) => {
-    if (cmd === 'which' && args[0] === 'bwrap') {
-      return { status: mockBwrapInstalled ? 0 : 1 }
-    }
-    if (cmd === 'which' && args[0] === 'socat') {
-      return { status: mockSocatInstalled ? 0 : 1 }
-    }
-    // Fall through to real spawnSync for other calls
-    return childProcess.spawnSync(cmd, args)
-  },
-}))
+// Store original Bun.which to restore later
+const originalBunWhich = globalThis.Bun.which
+
+// Mock Bun.which directly - this avoids mock.module which affects other test files
+globalThis.Bun.which = ((bin: string): string | null => {
+  if (bin === 'bwrap') {
+    return mockBwrapInstalled ? '/usr/bin/bwrap' : null
+  }
+  if (bin === 'socat') {
+    return mockSocatInstalled ? '/usr/bin/socat' : null
+  }
+  // For other binaries, use the original implementation
+  return originalBunWhich(bin)
+}) as typeof globalThis.Bun.which
 
 // Mock seccomp path functions - controls whether seccomp binaries are "found"
 void mock.module('../../src/sandbox/generate-seccomp-filter.js', () => ({
@@ -36,6 +33,11 @@ void mock.module('../../src/sandbox/generate-seccomp-filter.js', () => ({
 const { checkLinuxDependencies, getLinuxDependencyStatus } = await import(
   '../../src/sandbox/linux-sandbox-utils.js'
 )
+
+// Restore original Bun.which after all tests in this file
+afterAll(() => {
+  globalThis.Bun.which = originalBunWhich
+})
 
 describe('checkLinuxDependencies', () => {
   // Reset all mocks to "everything installed" state before each test

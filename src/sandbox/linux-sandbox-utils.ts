@@ -1,8 +1,9 @@
 import shellquote from 'shell-quote'
 import { logForDebugging } from '../utils/debug.js'
+import { whichSync } from '../utils/which.js'
 import { randomBytes } from 'node:crypto'
 import * as fs from 'fs'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path, { join } from 'node:path'
@@ -259,18 +260,9 @@ export function getLinuxDependencyStatus(seccompConfig?: {
   bpfPath?: string
   applyPath?: string
 }): LinuxDependencyStatus {
-  const bwrapResult = spawnSync('which', ['bwrap'], {
-    stdio: 'ignore',
-    timeout: 1000,
-  })
-  const socatResult = spawnSync('which', ['socat'], {
-    stdio: 'ignore',
-    timeout: 1000,
-  })
-
   return {
-    hasBwrap: bwrapResult.status === 0,
-    hasSocat: socatResult.status === 0,
+    hasBwrap: whichSync('bwrap') !== null,
+    hasSocat: whichSync('socat') !== null,
     hasSeccompBpf: getPreGeneratedBpfPath(seccompConfig?.bpfPath) !== null,
     hasSeccompApply:
       getApplySeccompBinaryPath(seccompConfig?.applyPath) !== null,
@@ -287,17 +279,9 @@ export function checkLinuxDependencies(seccompConfig?: {
   const errors: string[] = []
   const warnings: string[] = []
 
-  const bwrap = spawnSync('which', ['bwrap'], {
-    stdio: 'ignore',
-    timeout: 1000,
-  })
-  const socat = spawnSync('which', ['socat'], {
-    stdio: 'ignore',
-    timeout: 1000,
-  })
-
-  if (bwrap.status !== 0) errors.push('bubblewrap (bwrap) not installed')
-  if (socat.status !== 0) errors.push('socat not installed')
+  if (whichSync('bwrap') === null)
+    errors.push('bubblewrap (bwrap) not installed')
+  if (whichSync('socat') === null) errors.push('socat not installed')
 
   const hasBpf = getPreGeneratedBpfPath(seccompConfig?.bpfPath) !== null
   const hasApply = getApplySeccompBinaryPath(seccompConfig?.applyPath) !== null
@@ -885,13 +869,10 @@ export async function wrapCommandWithSandboxLinux(
     // Use the user's shell (zsh, bash, etc.) to ensure aliases/snapshots work
     // Resolve the full path to the shell binary since bwrap doesn't use $PATH
     const shellName = binShell || 'bash'
-    const shellPathResult = spawnSync('which', [shellName], {
-      encoding: 'utf8',
-    })
-    if (shellPathResult.status !== 0) {
+    const shell = whichSync(shellName)
+    if (!shell) {
       throw new Error(`Shell '${shellName}' not found in PATH`)
     }
-    const shell = shellPathResult.stdout.trim()
     bwrapArgs.push('--', shell, '-c')
 
     // If we have network restrictions, use the network bridge setup with apply-seccomp for seccomp

@@ -1,6 +1,6 @@
-import { spawnSync } from 'child_process'
 import { execFile } from 'child_process'
 import type { ExecFileException } from 'child_process'
+import { whichSync } from './which.js'
 
 export interface RipgrepConfig {
   command: string
@@ -12,16 +12,7 @@ export interface RipgrepConfig {
  * Returns true if rg is installed, false otherwise
  */
 export function hasRipgrepSync(): boolean {
-  try {
-    const result = spawnSync('which', ['rg'], {
-      stdio: 'ignore',
-      timeout: 1000,
-    })
-
-    return result.status === 0
-  } catch {
-    return false
-  }
+  return whichSync('rg') !== null
 }
 
 /**
