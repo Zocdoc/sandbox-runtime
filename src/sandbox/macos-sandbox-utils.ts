@@ -502,10 +502,17 @@ function generateSandboxProfile({
     profile.push('(allow network*)')
   } else {
     // Allow local binding if requested
+    // Use "*:*" instead of "localhost:*" because modern runtimes (Java, etc.) create
+    // IPv6 dual-stack sockets by default. When binding such a socket to 127.0.0.1,
+    // the kernel represents it as ::ffff:127.0.0.1 (IPv4-mapped IPv6). Seatbelt's
+    // "localhost" filter only matches 127.0.0.1 and ::1, NOT ::ffff:127.0.0.1.
+    // Using (local ip "*:*") is safe because it only matches the LOCAL endpoint —
+    // internet-bound connections originate from non-loopback interfaces, so they
+    // remain blocked by (deny default).
     if (allowLocalBinding) {
-      profile.push('(allow network-bind (local ip "localhost:*"))')
-      profile.push('(allow network-inbound (local ip "localhost:*"))')
-      profile.push('(allow network-outbound (local ip "localhost:*"))')
+      profile.push('(allow network-bind (local ip "*:*"))')
+      profile.push('(allow network-inbound (local ip "*:*"))')
+      profile.push('(allow network-outbound (local ip "*:*"))')
     }
     // Unix domain sockets for local IPC (SSH agent, Docker, etc.)
     if (allowAllUnixSockets) {
