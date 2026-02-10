@@ -7,6 +7,7 @@ import {
   readFileSync,
   symlinkSync,
   existsSync,
+  statSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +16,10 @@ import {
   wrapCommandWithSandboxMacOS,
   macGetMandatoryDenyPatterns,
 } from '../../src/sandbox/macos-sandbox-utils.js'
-import { wrapCommandWithSandboxLinux } from '../../src/sandbox/linux-sandbox-utils.js'
+import {
+  wrapCommandWithSandboxLinux,
+  cleanupBwrapMountPoints,
+} from '../../src/sandbox/linux-sandbox-utils.js'
 
 /**
  * Integration tests for mandatory deny paths.
@@ -483,6 +487,352 @@ describe('Mandatory Deny Paths - Integration Tests', () => {
       expect(readFileSync('.git/hooks/pre-commit', 'utf8')).toBe(
         ORIGINAL_CONTENT,
       )
+    })
+  })
+
+  describe('Non-existent deny path protection and cleanup (Linux only)', () => {
+    // This tests that:
+    // 1. Non-existent deny paths within writable areas are blocked by mounting
+    //    /dev/null at the first non-existent component
+    // 2. The mount point artifacts bwrap creates on the host are cleaned up
+    //    by cleanupBwrapMountPoints()
+    //
+    // Background: When bwrap does --ro-bind /dev/null /nonexistent/path, it
+    // creates an empty file on the host as a mount point. Without cleanup,
+    // these "ghost dotfiles" persist and pollute the working directory.
+
+    async function runSandboxedWriteWithDenyPaths(
+      command: string,
+      denyPaths: string[],
+    ): Promise<{ success: boolean; stdout: string; stderr: string }> {
+      const platform = getPlatform()
+      if (platform !== 'linux') {
+        return { success: true, stdout: '', stderr: '' }
+      }
+
+      const writeConfig = {
+        allowOnly: ['.'],
+        denyWithinAllow: denyPaths,
+      }
+
+      const wrappedCommand = await wrapCommandWithSandboxLinux({
+        command,
+        needsNetworkRestriction: false,
+        readConfig: undefined,
+        writeConfig,
+        enableWeakerNestedSandbox: true,
+      })
+
+      const result = spawnSync(wrappedCommand, {
+        shell: true,
+        encoding: 'utf8',
+        timeout: 10000,
+      })
+
+      return {
+        success: result.status === 0,
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+      }
+    }
+
+    // --- Security: deny path blocking ---
+
+    it('blocks creation of non-existent file when parent dir exists', async () => {
+      if (getPlatform() !== 'linux') return
+
+      // .claude directory exists from beforeAll setup
+      // .claude/settings.json does NOT exist
+      const nonExistentFile = '.claude/settings.json'
+
+      const result = await runSandboxedWriteWithDenyPaths(
+        `echo '{"hooks":{}}' > '${nonExistentFile}'`,
+        [join(TEST_DIR, nonExistentFile)],
+      )
+
+      expect(result.success).toBe(false)
+      // Verify file content was NOT written (bwrap creates empty mount point)
+      const content = readFileSync(nonExistentFile, 'utf8')
+      expect(content).toBe('')
+
+      cleanupBwrapMountPoints()
+    })
+
+    it('blocks creation of non-existent file when parent dir also does not exist', async () => {
+      if (getPlatform() !== 'linux') return
+
+      const nonExistentPath = 'nonexistent-dir/settings.json'
+
+      const result = await runSandboxedWriteWithDenyPaths(
+        `mkdir -p nonexistent-dir && echo '{"hooks":{}}' > '${nonExistentPath}'`,
+        [join(TEST_DIR, nonExistentPath)],
+      )
+
+      expect(result.success).toBe(false)
+      // bwrap mounts an empty read-only directory at first non-existent
+      // intermediate component, blocking mkdir inside it
+      const stat = statSync('nonexistent-dir')
+      expect(stat.isDirectory()).toBe(true)
+
+      cleanupBwrapMountPoints()
+    })
+
+    it('blocks creation of deeply nested non-existent path', async () => {
+      if (getPlatform() !== 'linux') return
+
+      const nonExistentPath = 'a/b/c/file.txt'
+
+      const result = await runSandboxedWriteWithDenyPaths(
+        `mkdir -p a/b/c && echo 'test' > '${nonExistentPath}'`,
+        [join(TEST_DIR, nonExistentPath)],
+      )
+
+      expect(result.success).toBe(false)
+      // bwrap mounts an empty read-only directory at 'a', blocking the
+      // entire subtree
+      const stat = statSync('a')
+      expect(stat.isDirectory()).toBe(true)
+
+      cleanupBwrapMountPoints()
+    })
+
+    // --- Cleanup: mount point artifact removal ---
+
+    it('cleanupBwrapMountPoints removes mount point artifacts', async () => {
+      if (getPlatform() !== 'linux') return
+
+      const nonExistentPath = 'cleanup-test-dir/file.txt'
+
+      await runSandboxedWriteWithDenyPaths(`echo test > '${nonExistentPath}'`, [
+        join(TEST_DIR, nonExistentPath),
+      ])
+
+      // Mount point artifact should exist on host after bwrap exits
+      expect(existsSync('cleanup-test-dir')).toBe(true)
+
+      // Clean up
+      cleanupBwrapMountPoints()
+
+      // Artifact should be gone
+      expect(existsSync('cleanup-test-dir')).toBe(false)
+    })
+
+    it('cleanupBwrapMountPoints removes multiple mount points from a single command', async () => {
+      if (getPlatform() !== 'linux') return
+
+      // Two non-existent deny paths in different subtrees
+      const path1 = 'ghost-dir-a/secret.txt'
+      const path2 = 'ghost-dir-b/secret.txt'
+
+      await runSandboxedWriteWithDenyPaths(`mkdir -p ghost-dir-a ghost-dir-b`, [
+        join(TEST_DIR, path1),
+        join(TEST_DIR, path2),
+      ])
+
+      // Both mount point artifacts should exist
+      expect(existsSync('ghost-dir-a')).toBe(true)
+      expect(existsSync('ghost-dir-b')).toBe(true)
+
+      cleanupBwrapMountPoints()
+
+      // Both should be cleaned up
+      expect(existsSync('ghost-dir-a')).toBe(false)
+      expect(existsSync('ghost-dir-b')).toBe(false)
+    })
+
+    it('cleanupBwrapMountPoints preserves non-empty directories', async () => {
+      if (getPlatform() !== 'linux') return
+
+      const nonExistentPath = 'preserve-test-dir/file.txt'
+
+      await runSandboxedWriteWithDenyPaths(`echo test > '${nonExistentPath}'`, [
+        join(TEST_DIR, nonExistentPath),
+      ])
+
+      // Simulate something else creating content in the mount point directory
+      // (e.g., another process created files here legitimately)
+      const mountPoint = join(TEST_DIR, 'preserve-test-dir')
+      if (existsSync(mountPoint)) {
+        // Create a file inside — cleanup should NOT delete non-empty directories
+        writeFileSync(join(mountPoint, 'real-file.txt'), 'real content')
+      }
+
+      cleanupBwrapMountPoints()
+
+      // Directory with real content should be preserved
+      if (existsSync(mountPoint)) {
+        expect(statSync(mountPoint).isDirectory()).toBe(true)
+        const content = readFileSync(join(mountPoint, 'real-file.txt'), 'utf8')
+        expect(content).toBe('real content')
+        // Manual cleanup for this test
+        rmSync(mountPoint, { recursive: true, force: true })
+      }
+    })
+
+    it('cleanupBwrapMountPoints is safe to call when there are no mount points', () => {
+      // Should not throw
+      cleanupBwrapMountPoints()
+      cleanupBwrapMountPoints()
+    })
+
+    it('non-existent .git/hooks deny does not turn .git into a file, breaking git', async () => {
+      if (getPlatform() !== 'linux') return
+
+      // When .git doesn't exist yet, denying .git/hooks causes
+      // findFirstNonExistentComponent to return .git itself. bwrap then does
+      // --ro-bind /dev/null .git, creating .git as a FILE (not a directory).
+      // Inside the sandbox, every git command fails because .git is a file.
+
+      // Use a clean directory with NO .git
+      const noGitDir = join(TEST_DIR, 'no-git-dir')
+      mkdirSync(noGitDir, { recursive: true })
+
+      const originalDir = process.cwd()
+      process.chdir(noGitDir)
+
+      try {
+        const writeConfig = {
+          allowOnly: ['.'],
+          denyWithinAllow: [] as string[],
+        }
+
+        // This calls linuxGetMandatoryDenyPaths which unconditionally adds
+        // .git/hooks to the deny list. When .git doesn't exist,
+        // findFirstNonExistentComponent returns .git and bwrap mounts
+        // /dev/null there — making .git a file.
+        const wrappedCommand = await wrapCommandWithSandboxLinux({
+          command: 'git init && git status',
+          needsNetworkRestriction: false,
+          readConfig: undefined,
+          writeConfig,
+          enableWeakerNestedSandbox: true,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 10000,
+        })
+
+        // git init + git status should succeed — .git must be creatable as
+        // a directory, not blocked by a /dev/null file mount.
+        expect(result.status).toBe(0)
+
+        cleanupBwrapMountPoints()
+      } finally {
+        process.chdir(originalDir)
+        rmSync(noGitDir, { recursive: true, force: true })
+      }
+    })
+
+    it('git worktree with .git as a file does not break sandboxed commands', async () => {
+      if (getPlatform() !== 'linux') return
+
+      // Reproduces the bug reported by nvidia/netflix with git worktrees:
+      // In a worktree, .git is a FILE (e.g., "gitdir: /path/to/.git/worktrees/foo"),
+      // not a directory. The mandatory deny list includes .git/hooks, but since
+      // .git is a file, .git/hooks doesn't exist. The non-existent path handling
+      // tries to mount /dev/null at .git/hooks, but bwrap can't create a mount
+      // point under .git because it's a file — causing every command to fail.
+
+      const worktreeDir = join(TEST_DIR, 'fake-worktree')
+      mkdirSync(worktreeDir, { recursive: true })
+
+      // Simulate a git worktree: .git is a file, not a directory
+      writeFileSync(
+        join(worktreeDir, '.git'),
+        'gitdir: /tmp/fake-main-repo/.git/worktrees/my-branch',
+      )
+
+      const originalDir = process.cwd()
+      process.chdir(worktreeDir)
+
+      try {
+        const writeConfig = {
+          allowOnly: ['.'],
+          denyWithinAllow: [] as string[],
+        }
+
+        // linuxGetMandatoryDenyPaths adds .git/hooks to deny list.
+        // .git exists as a file, so .git/hooks doesn't exist.
+        // The code will try to mount /dev/null at .git/hooks, but bwrap
+        // can't create a mount point there because .git is a file.
+        const wrappedCommand = await wrapCommandWithSandboxLinux({
+          command: 'echo hello',
+          needsNetworkRestriction: false,
+          readConfig: undefined,
+          writeConfig,
+          enableWeakerNestedSandbox: true,
+        })
+
+        const result = spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 10000,
+        })
+
+        // A simple echo should succeed — the .git-as-file worktree layout
+        // should not cause the sandbox to fail.
+        expect(result.status).toBe(0)
+        expect(result.stdout.trim()).toBe('hello')
+
+        cleanupBwrapMountPoints()
+      } finally {
+        process.chdir(originalDir)
+        rmSync(worktreeDir, { recursive: true, force: true })
+      }
+    })
+
+    it('does not leave ghost dotfiles after command + cleanup cycle', async () => {
+      if (getPlatform() !== 'linux') return
+
+      // This is the exact scenario from issue #85: running a sandboxed command
+      // should NOT leave .bashrc, .gitconfig, etc. in the working directory.
+      //
+      // The mandatory deny list includes paths like ~/.bashrc, ~/.gitconfig.
+      // When CWD is within an allowed write path and these dotfiles don't exist
+      // in CWD, the old code left empty mount point files behind.
+
+      // Use a clean subdirectory with no dotfiles
+      const cleanDir = join(TEST_DIR, 'clean-subdir')
+      mkdirSync(cleanDir, { recursive: true })
+
+      const originalDir = process.cwd()
+      process.chdir(cleanDir)
+
+      try {
+        // Run a simple command through the sandbox
+        const writeConfig = {
+          allowOnly: ['.'],
+          denyWithinAllow: [] as string[],
+        }
+
+        const wrappedCommand = await wrapCommandWithSandboxLinux({
+          command: 'echo hello',
+          needsNetworkRestriction: false,
+          readConfig: undefined,
+          writeConfig,
+          enableWeakerNestedSandbox: true,
+        })
+
+        spawnSync(wrappedCommand, {
+          shell: true,
+          encoding: 'utf8',
+          timeout: 10000,
+        })
+
+        // Run cleanup (as the CLI / Claude Code would)
+        cleanupBwrapMountPoints()
+
+        // Verify no ghost dotfiles were left behind
+        const { readdirSync } = await import('node:fs')
+        const files = readdirSync(cleanDir)
+        const ghostDotfiles = files.filter(f => f.startsWith('.'))
+        expect(ghostDotfiles).toEqual([])
+      } finally {
+        process.chdir(originalDir)
+        rmSync(cleanDir, { recursive: true, force: true })
+      }
     })
   })
 
