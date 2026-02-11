@@ -30,6 +30,7 @@ export interface MacOSSandboxParams {
   ignoreViolations?: IgnoreViolationsConfig | undefined
   allowPty?: boolean
   allowGitConfig?: boolean
+  allowClipboard?: boolean
   binShell?: string
 }
 
@@ -362,6 +363,7 @@ function generateSandboxProfile({
   allowLocalBinding,
   allowPty,
   allowGitConfig = false,
+  allowClipboard = false,
   logTag,
 }: {
   readConfig: FsReadRestrictionConfig | undefined
@@ -374,6 +376,7 @@ function generateSandboxProfile({
   allowLocalBinding?: boolean
   allowPty?: boolean
   allowGitConfig?: boolean
+  allowClipboard?: boolean
   logTag: string
 }): string {
   const profile: string[] = [
@@ -503,6 +506,24 @@ function generateSandboxProfile({
     '; Specific mach-lookup permissions for security operations',
     '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
     '',
+  ]
+
+  // Clipboard (pasteboard) access - required for pasting images
+  if (allowClipboard) {
+    profile.push(
+      '; Clipboard (pasteboard) access',
+      '(allow mach-lookup',
+      '  (global-name "com.apple.pasteboard.1")',
+      '  ; Supporting services for clipboard/GUI operations',
+      '  (global-name "com.apple.CoreServices.coreservicesd")',
+      '  (global-name "com.apple.windowserver.active")',
+      '  (global-name "com.apple.tccd.system")',
+      ')',
+      '',
+    )
+  }
+
+  profile.push(
     '; File I/O on device files',
     '(allow file-ioctl (literal "/dev/null"))',
     '(allow file-ioctl (literal "/dev/zero"))',
@@ -518,7 +539,7 @@ function generateSandboxProfile({
     '  )',
     ')',
     '',
-  ]
+  )
 
   // Network rules
   profile.push('; Network')
@@ -569,6 +590,7 @@ function generateSandboxProfile({
         `(allow network-outbound (remote ip "localhost:${socksProxyPort}"))`,
       )
     }
+
   }
   profile.push('')
 
@@ -649,6 +671,7 @@ export function wrapCommandWithSandboxMacOS(
     writeConfig,
     allowPty,
     allowGitConfig = false,
+    allowClipboard = false,
     binShell,
   } = params
 
@@ -680,10 +703,12 @@ export function wrapCommandWithSandboxMacOS(
     allowLocalBinding,
     allowPty,
     allowGitConfig,
+    allowClipboard,
     logTag,
   })
 
   // Generate proxy environment variables using shared utility
+  // Note: GIT_SSH_COMMAND is already set by generateProxyEnvVars() to route SSH through SOCKS proxy
   const proxyEnvArgs = generateProxyEnvVars(httpProxyPort, socksProxyPort)
 
   // Use the user's shell (zsh, bash, etc.) to ensure aliases/snapshots work

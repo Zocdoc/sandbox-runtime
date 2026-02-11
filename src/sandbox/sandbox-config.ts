@@ -75,7 +75,11 @@ const MitmProxyConfigSchema = z.object({
 export const NetworkConfigSchema = z.object({
   allowedDomains: z
     .array(domainPatternSchema)
-    .describe('List of allowed domains (e.g., ["github.com", "*.npmjs.org"])'),
+    .describe(
+      'List of allowed domains for all network traffic including HTTP/HTTPS and SSH ' +
+        '(e.g., ["github.com", "*.npmjs.org"]). SSH connections (git clone via SSH) ' +
+        'are routed through the SOCKS proxy using GIT_SSH_COMMAND.',
+    ),
   deniedDomains: z
     .array(domainPatternSchema)
     .describe('List of denied domains'),
@@ -206,6 +210,12 @@ export const SandboxRuntimeConfigSchema = z.object({
     .boolean()
     .optional()
     .describe('Allow pseudo-terminal (pty) operations (macOS only)'),
+  allowClipboard: z
+    .boolean()
+    .optional()
+    .describe(
+      'Allow clipboard (pasteboard) access (macOS only). Required for pasting images into sandboxed processes.',
+    ),
   seccomp: SeccompConfigSchema.optional().describe(
     'Custom seccomp binary paths (Linux only).',
   ),

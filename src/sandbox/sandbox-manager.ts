@@ -461,6 +461,10 @@ function getAllowGitConfig(): boolean {
   return config?.filesystem?.allowGitConfig ?? false
 }
 
+function getAllowClipboard(): boolean {
+  return config?.allowClipboard ?? false
+}
+
 function getSeccompConfig():
   | { bpfPath?: string; applyPath?: string }
   | undefined {
@@ -569,6 +573,7 @@ async function wrapWithSandbox(
         ignoreViolations: getIgnoreViolations(),
         allowPty,
         allowGitConfig: getAllowGitConfig(),
+        allowClipboard: getAllowClipboard(),
         binShell,
       })
 
