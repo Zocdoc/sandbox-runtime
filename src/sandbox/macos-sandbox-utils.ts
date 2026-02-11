@@ -708,7 +708,6 @@ export function wrapCommandWithSandboxMacOS(
   })
 
   // Generate proxy environment variables using shared utility
-  // Note: GIT_SSH_COMMAND is already set by generateProxyEnvVars() to route SSH through SOCKS proxy
   const proxyEnvArgs = generateProxyEnvVars(httpProxyPort, socksProxyPort)
 
   // Use the user's shell (zsh, bash, etc.) to ensure aliases/snapshots work

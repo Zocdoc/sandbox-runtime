@@ -75,11 +75,7 @@ const MitmProxyConfigSchema = z.object({
 export const NetworkConfigSchema = z.object({
   allowedDomains: z
     .array(domainPatternSchema)
-    .describe(
-      'List of allowed domains for all network traffic including HTTP/HTTPS and SSH ' +
-        '(e.g., ["github.com", "*.npmjs.org"]). SSH connections (git clone via SSH) ' +
-        'are routed through the SOCKS proxy using GIT_SSH_COMMAND.',
-    ),
+    .describe('List of allowed domains (e.g., ["github.com", "*.npmjs.org"])'),
   deniedDomains: z
     .array(domainPatternSchema)
     .describe('List of denied domains'),
