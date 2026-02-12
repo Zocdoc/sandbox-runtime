@@ -509,15 +509,14 @@ function generateSandboxProfile({
   ]
 
   // Clipboard (pasteboard) access - required for pasting images
+  // trustd.agent is needed for code signing verification before
+  // the process can communicate with the pasteboard service.
   if (allowClipboard) {
     profile.push(
       '; Clipboard (pasteboard) access',
       '(allow mach-lookup',
       '  (global-name "com.apple.pasteboard.1")',
-      '  ; Supporting services for clipboard/GUI operations',
-      '  (global-name "com.apple.CoreServices.coreservicesd")',
-      '  (global-name "com.apple.windowserver.active")',
-      '  (global-name "com.apple.tccd.system")',
+      '  (global-name "com.apple.trustd.agent")',
       ')',
       '',
     )
