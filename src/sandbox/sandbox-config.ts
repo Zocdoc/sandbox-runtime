@@ -206,6 +206,12 @@ export const SandboxRuntimeConfigSchema = z.object({
     .boolean()
     .optional()
     .describe('Allow pseudo-terminal (pty) operations (macOS only)'),
+  allowClipboard: z
+    .boolean()
+    .optional()
+    .describe(
+      'Allow clipboard (pasteboard) access (macOS only). Required for pasting images into sandboxed processes.',
+    ),
   seccomp: SeccompConfigSchema.optional().describe(
     'Custom seccomp binary paths (Linux only).',
   ),

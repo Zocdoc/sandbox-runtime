@@ -30,6 +30,7 @@ export interface MacOSSandboxParams {
   ignoreViolations?: IgnoreViolationsConfig | undefined
   allowPty?: boolean
   allowGitConfig?: boolean
+  allowClipboard?: boolean
   binShell?: string
 }
 
@@ -362,6 +363,7 @@ function generateSandboxProfile({
   allowLocalBinding,
   allowPty,
   allowGitConfig = false,
+  allowClipboard = false,
   logTag,
 }: {
   readConfig: FsReadRestrictionConfig | undefined
@@ -374,6 +376,7 @@ function generateSandboxProfile({
   allowLocalBinding?: boolean
   allowPty?: boolean
   allowGitConfig?: boolean
+  allowClipboard?: boolean
   logTag: string
 }): string {
   const profile: string[] = [
@@ -503,6 +506,23 @@ function generateSandboxProfile({
     '; Specific mach-lookup permissions for security operations',
     '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
     '',
+  ]
+
+  // Clipboard (pasteboard) access - required for pasting images
+  // trustd.agent is needed for code signing verification before
+  // the process can communicate with the pasteboard service.
+  if (allowClipboard) {
+    profile.push(
+      '; Clipboard (pasteboard) access',
+      '(allow mach-lookup',
+      '  (global-name "com.apple.pasteboard.1")',
+      '  (global-name "com.apple.trustd.agent")',
+      ')',
+      '',
+    )
+  }
+
+  profile.push(
     '; File I/O on device files',
     '(allow file-ioctl (literal "/dev/null"))',
     '(allow file-ioctl (literal "/dev/zero"))',
@@ -518,7 +538,7 @@ function generateSandboxProfile({
     '  )',
     ')',
     '',
-  ]
+  )
 
   // Network rules
   profile.push('; Network')
@@ -569,6 +589,7 @@ function generateSandboxProfile({
         `(allow network-outbound (remote ip "localhost:${socksProxyPort}"))`,
       )
     }
+
   }
   profile.push('')
 
@@ -649,6 +670,7 @@ export function wrapCommandWithSandboxMacOS(
     writeConfig,
     allowPty,
     allowGitConfig = false,
+    allowClipboard = false,
     binShell,
   } = params
 
@@ -680,6 +702,7 @@ export function wrapCommandWithSandboxMacOS(
     allowLocalBinding,
     allowPty,
     allowGitConfig,
+    allowClipboard,
     logTag,
   })
 
