@@ -34,6 +34,7 @@ export interface MacOSSandboxParams {
   allowPty?: boolean
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
+  allowClipboard?: boolean
   binShell?: string
 }
 
@@ -330,6 +331,7 @@ function generateSandboxProfile({
   allowPty,
   allowGitConfig = false,
   enableWeakerNetworkIsolation = false,
+  allowClipboard = false,
   logTag,
 }: {
   readConfig: FsReadRestrictionConfig | undefined
@@ -343,6 +345,7 @@ function generateSandboxProfile({
   allowPty?: boolean
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
+  allowClipboard?: boolean
   logTag: string
 }): string {
   const profile: string[] = [
@@ -479,6 +482,23 @@ function generateSandboxProfile({
     '; Specific mach-lookup permissions for security operations',
     '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
     '',
+  ]
+
+  // Clipboard (pasteboard) access - required for pasting images
+  // trustd.agent is needed for code signing verification before
+  // the process can communicate with the pasteboard service.
+  if (allowClipboard) {
+    profile.push(
+      '; Clipboard (pasteboard) access',
+      '(allow mach-lookup',
+      '  (global-name "com.apple.pasteboard.1")',
+      '  (global-name "com.apple.trustd.agent")',
+      ')',
+      '',
+    )
+  }
+
+  profile.push(
     '; File I/O on device files',
     '(allow file-ioctl (literal "/dev/null"))',
     '(allow file-ioctl (literal "/dev/zero"))',
@@ -494,7 +514,7 @@ function generateSandboxProfile({
     '  )',
     ')',
     '',
-  ]
+  )
 
   // Network rules
   profile.push('; Network')
@@ -633,6 +653,7 @@ export function wrapCommandWithSandboxMacOS(
     allowPty,
     allowGitConfig = false,
     enableWeakerNetworkIsolation = false,
+    allowClipboard = false,
     binShell,
   } = params
 
@@ -665,6 +686,7 @@ export function wrapCommandWithSandboxMacOS(
     allowPty,
     allowGitConfig,
     enableWeakerNetworkIsolation,
+    allowClipboard,
     logTag,
   })
 
