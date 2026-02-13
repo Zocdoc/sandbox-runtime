@@ -471,6 +471,10 @@ function getAllowClipboard(): boolean {
   return config?.allowClipboard ?? false
 }
 
+function getAllowNotifications(): boolean {
+  return config?.allowNotifications ?? false
+}
+
 function getSeccompConfig():
   | { bpfPath?: string; applyPath?: string }
   | undefined {
@@ -591,6 +595,7 @@ async function wrapWithSandbox(
         allowGitConfig: getAllowGitConfig(),
         enableWeakerNetworkIsolation: getEnableWeakerNetworkIsolation(),
         allowClipboard: getAllowClipboard(),
+        allowNotifications: getAllowNotifications(),
         binShell,
       })
 

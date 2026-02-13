@@ -35,6 +35,7 @@ export interface MacOSSandboxParams {
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
   allowClipboard?: boolean
+  allowNotifications?: boolean
   binShell?: string
 }
 
@@ -332,6 +333,7 @@ function generateSandboxProfile({
   allowGitConfig = false,
   enableWeakerNetworkIsolation = false,
   allowClipboard = false,
+  allowNotifications = false,
   logTag,
 }: {
   readConfig: FsReadRestrictionConfig | undefined
@@ -346,6 +348,7 @@ function generateSandboxProfile({
   allowGitConfig?: boolean
   enableWeakerNetworkIsolation?: boolean
   allowClipboard?: boolean
+  allowNotifications?: boolean
   logTag: string
 }): string {
   const profile: string[] = [
@@ -494,6 +497,18 @@ function generateSandboxProfile({
       '(allow mach-lookup',
       '  (global-name "com.apple.pasteboard.1")',
       '  (global-name "com.apple.trustd.agent")',
+      ')',
+      '',
+    )
+  }
+
+  // Notification access - required for terminal-notifier, osascript display notification, etc.
+  if (allowNotifications) {
+    profile.push(
+      '; Notification access (minimal: TCC and window server)',
+      '(allow mach-lookup',
+      '  (global-name "com.apple.tccd.system")',
+      '  (global-name "com.apple.windowserver.active")',
       ')',
       '',
     )
@@ -655,6 +670,7 @@ export function wrapCommandWithSandboxMacOS(
     allowGitConfig = false,
     enableWeakerNetworkIsolation = false,
     allowClipboard = false,
+    allowNotifications = false,
     binShell,
   } = params
 
@@ -688,6 +704,7 @@ export function wrapCommandWithSandboxMacOS(
     allowGitConfig,
     enableWeakerNetworkIsolation,
     allowClipboard,
+    allowNotifications,
     logTag,
   })
 

@@ -221,6 +221,12 @@ export const SandboxRuntimeConfigSchema = z.object({
     .describe(
       'Allow clipboard (pasteboard) access (macOS only). Required for pasting images into sandboxed processes.',
     ),
+  allowNotifications: z
+    .boolean()
+    .optional()
+    .describe(
+      'Allow notification access (macOS only). Required for tools like terminal-notifier that need window server, TCC, and dock access.',
+    ),
   seccomp: SeccompConfigSchema.optional().describe(
     'Custom seccomp binary paths (Linux only).',
   ),
