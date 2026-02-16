@@ -512,7 +512,7 @@ function generateSandboxProfile({
     if (allowLocalBinding) {
       profile.push('(allow network-bind (local ip "*:*"))')
       profile.push('(allow network-inbound (local ip "*:*"))')
-      profile.push('(allow network-outbound (local ip "*:*"))')
+      profile.push('(allow network-outbound (remote ip "localhost:*"))')
     }
     // Unix domain sockets for local IPC (SSH agent, Docker, etc.)
     if (allowAllUnixSockets) {
