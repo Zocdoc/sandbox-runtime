@@ -502,13 +502,19 @@ function generateSandboxProfile({
     )
   }
 
-  // Notification access - required for terminal-notifier, osascript display notification, etc.
+  // Notification access - SCOPED TO TERMINAL-NOTIFIER ONLY using signing-identifier
   if (allowNotifications) {
     profile.push(
-      '; Notification access (minimal: TCC and window server)',
-      '(allow mach-lookup',
-      '  (global-name "com.apple.tccd.system")',
-      '  (global-name "com.apple.windowserver.active")',
+      '; Notification access - scoped to terminal-notifier via signing-identifier',
+      '; Minimal set: only core notification pipeline services',
+      '(with-filter (signing-identifier "terminal-notifier")',
+      '  (allow mach-lookup',
+      '    (global-name "com.apple.usernoted.client")',
+      '    (global-name "com.apple.windowserver.active")',
+      '    (global-name "com.apple.tccd.system")',
+      '    (global-name "com.apple.CARenderServer")',
+      '    (global-name "com.apple.dock.server")',
+      '  )',
       ')',
       '',
     )
