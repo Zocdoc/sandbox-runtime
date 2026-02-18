@@ -370,6 +370,8 @@ function generateSandboxProfile({
     '',
     '; Mach IPC - specific services only (no wildcard)',
     '(allow mach-lookup',
+    '  (global-name "com.apple.audio.AudioComponentRegistrar")',
+    '  (global-name "com.apple.audio.audiohald")',
     '  (global-name "com.apple.audio.systemsoundserver")',
     '  (global-name "com.apple.distributed_notifications@Uv3")',
     '  (global-name "com.apple.FontObjectsServer")',
